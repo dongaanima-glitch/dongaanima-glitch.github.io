@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>동아리 아니마</title>
+<style>
+:root{--bg:#f2f4ef;--ink:#1d2433;--mute:#667085;--line:#d9ddd3;--card:#fff;--acc:#4f46e5;--ok:#17805d;--okbg:#dff3ea}
+@media (prefers-color-scheme:dark){:root{--bg:#141820;--ink:#e8ebf2;--mute:#97a0b3;--line:#2a3140;--card:#1b2130;--acc:#8b86ff;--ok:#5fd4a4;--okbg:#18372d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Pretendard","Noto Sans KR",system-ui,sans-serif;line-height:1.55}
+header{padding:28px 20px 12px;max-width:980px;margin:auto}
+h1{font-size:34px;margin:0;letter-spacing:-.03em;font-weight:800}
+h1 small{display:block;font-size:14px;font-weight:500;color:var(--mute);letter-spacing:0;margin-top:2px}
+main{max-width:980px;margin:auto;padding:0 20px 60px}
+nav{display:flex;gap:6px;margin:14px 0;border-bottom:1px solid var(--line)}
+nav button{background:none;border:0;padding:10px 14px;font:inherit;color:var(--mute);cursor:pointer;border-bottom:3px solid transparent}
+nav button[aria-selected=true]{color:var(--ink);border-color:var(--acc);font-weight:700}
+.stats{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:13px;color:var(--mute)}
+.stat b{display:block;font-size:20px;color:var(--ink)}
+input,select{font:inherit;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+.bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}.bar input{flex:1;min-width:160px}
+.row{display:grid;grid-template-columns:1.1fr 1.1fr 2.8fr;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.row.off{opacity:.5}
+.name{font-weight:700}.tel{color:var(--mute);font-size:14px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.chip{border:1px solid var(--line);background:transparent;color:var(--mute);border-radius:999px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--okbg);color:var(--ok);border-color:var(--ok);font-weight:700}
+.chip:focus-visible,nav button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.login{max-width:340px;margin:60px auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px}
+.login input{width:100%;margin:10px 0}
+.btn{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:10px 16px;font:inherit;cursor:pointer;width:100%}
+.doc{display:flex;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;text-decoration:none;color:inherit}
+.doc span{color:var(--mute);font-size:13px}
+.note{color:var(--mute);font-size:13px;margin:10px 0}
+.hide{display:none}
+@media(max-width:640px){.row{grid-template-columns:1fr}.chips{justify-content:flex-start}}
+</style>
+</head>
+<body>
+<div id="login" class="login">
+  <h1>아니마<small>운영진 로그인</small></h1>
+  <input id="pw" type="password" placeholder="운영진 비밀번호" aria-label="운영진 비밀번호">
+  <button class="btn" id="go">들어가기</button>
+  <p class="note" id="loginNote"></p>
+</div>
+
+<div id="app" class="hide">
+<header><h1>동아리 아니마<small id="mode"></small></h1></header>
+<main>
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="members">명단</button>
+    <button role="tab" aria-selected="false" data-tab="docs">문서</button>
+  </nav>
+
+  <section id="members">
+    <div class="stats" id="stats"></div>
+    <div class="bar">
+      <input id="q" placeholder="이름·연락처 검색" aria-label="검색">
+      <select id="filter" aria-label="필터">
+        <option value="">전체</option><option value="wait">입금 대기</option><option value="inv">초대 대기</option><option value="off">비활성</option>
+      </select>
+    </div>
+    <div id="list"></div>
+    <p class="note">안내문구 전달·초대완료는 카카오톡 봇이 자동으로 켭니다. 입금완료는 확인 후 직접 눌러주세요.</p>
+  </section>
+
+  <section id="docs" class="hide">
+    <div class="bar">
+      <select id="cat" aria-label="분류"><option value="">전체</option><option>회의록</option><option>포스터</option><option>메모</option></select>
+    </div>
+    <div id="docList"></div>
+    <div class="bar" style="margin-top:16px">
+      <select id="nc"><option>회의록</option><option>포스터</option><option>메모</option></select>
+      <input id="nt" placeholder="제목">
+      <input id="nl" placeholder="구글 드라이브 링크">
+      <button class="chip" id="addDoc">문서 추가</button>
+    </div>
+  </section>
+</main>
+</div>
+
+<script>
+// ★ Apps Script 웹 앱 URL을 넣으세요. 비워두면 연습용(데모) 데이터로 동작합니다.
+const API_URL = "AKfycbzxcVzjTEYYZd8oXbuGz_iQt5C7iE7xgo34nPYNNYc-aDxbZ_pZi9ZUcmupx27A88w71Q";
+
+let PW = "", members = [], docs = [];
+const $ = s => document.querySelector(s);
+const DEMO = !API_URL;
+
+const demoMembers = [
+  {row:2,이름:"김하늘",연락처:"010-1111-2222",활성:true,안내전달:true,입금완료:true,초대완료:true},
+  {row:3,이름:"이도윤",연락처:"010-3333-4444",활성:true,안내전달:true,입금완료:false,초대완료:false},
+  {row:4,이름:"박서연",연락처:"010-5555-6666",활성:true,안내전달:false,입금완료:false,초대완료:false},
+  {row:5,이름:"최민준",연락처:"010-7777-8888",활성:false,안내전달:true,입금완료:true,초대완료:true}
+];
+const demoDocs = [{분류:"회의록",제목:"10월 정기회의",링크:"#",날짜:"2026-10-02"},{분류:"포스터",제목:"신입 모집 포스터",링크:"#",날짜:"2026-09-20"}];
+
+async function api(params, body){
+  if (DEMO) return null;
+  if (body) {
+    const r = await fetch(API_URL, {method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify({pw:PW, ...body})});
+    return r.json();
+  }
+  const r = await fetch(API_URL + "?" + new URLSearchParams({pw:PW, ...params}));
+  return r.json();
+}
+
+async function load(){
+  if (DEMO){ members = structuredClone(demoMembers); docs = structuredClone(demoDocs); return true; }
+  const m = await api({action:"members"});
+  if (m.error) return false;
+  members = m; docs = await api({action:"docs"});
+  return true;
+}
+
+function render(){
+  const q = $("#q").value.trim(), f = $("#filter").value;
+  const list = members.filter(m => {
+    if (q && !(m.이름+m.연락처).includes(q)) return false;
+    if (f==="wait") return m.활성 && m.안내전달 && !m.입금완료;
+    if (f==="inv") return m.입금완료 && !m.초대완료;
+    if (f==="off") return !m.활성;
+    return true;
+  });
+  const act = members.filter(m=>m.활성);
+  $("#stats").innerHTML = [
+    ["전체",members.length],["활동 중",act.length],
+    ["입금 대기",act.filter(m=>!m.입금완료).length],["초대 대기",members.filter(m=>m.입금완료&&!m.초대완료).length]
+  ].map(([a,b])=>`<div class="stat">${a}<b>${b}</b></div>`).join("");
+  $("#list").innerHTML = list.length ? list.map(m=>`
+    <div class="row ${m.활성?"":"off"}">
+      <div class="name">${esc(m.이름)}</div><div class="tel">${esc(m.연락처)}</div>
+      <div class="chips">
+        ${chip(m,"active","활성",m.활성)}${chip(m,"guide","안내문구 전달",m.안내전달)}
+        ${chip(m,"paid","입금완료",m.입금완료)}${chip(m,"invited","초대완료",m.초대완료)}
+      </div></div>`).join("") : `<p class="note">조건에 맞는 인원이 없습니다.</p>`;
+  const c = $("#cat").value;
+  $("#docList").innerHTML = docs.filter(d=>!c||d.분류===c).map(d=>`
+    <a class="doc" href="${esc(d.링크)}" target="_blank" rel="noopener"><div><b>${esc(d.제목)}</b><br><span>${esc(d.분류)}</span></div><span>${esc(String(d.날짜).slice(0,10))}</span></a>`).join("") || `<p class="note">등록된 문서가 없습니다. 아래에서 드라이브 링크를 추가하세요.</p>`;
+}
+const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const KEY = {active:"활성",guide:"안내전달",paid:"입금완료",invited:"초대완료"};
+const chip = (m,f,label,on)=>`<button class="chip" aria-pressed="${!!on}" data-row="${m.row}" data-f="${f}">${label}</button>`;
+
+$("#list").addEventListener("click", async e=>{
+  const b = e.target.closest(".chip"); if(!b) return;
+  const m = members.find(x=>x.row==b.dataset.row), k = KEY[b.dataset.f];
+  m[k] = !m[k]; render();                                  // 즉시 반영
+  try{ await api(null,{action:"set",row:m.row,field:b.dataset.f,value:m[k]}); }
+  catch{ m[k] = !m[k]; render(); alert("저장에 실패했습니다. 다시 시도해주세요."); }
+});
+$("#addDoc").onclick = async ()=>{
+  const d={분류:$("#nc").value,제목:$("#nt").value.trim(),링크:$("#nl").value.trim(),날짜:new Date().toISOString()};
+  if(!d.제목||!d.링크) return alert("제목과 링크를 입력하세요.");
+  docs.unshift(d); render(); $("#nt").value=$("#nl").value="";
+  await api(null,{action:"add_doc",category:d.분류,title:d.제목,link:d.링크});
+};
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  $("#members").classList.toggle("hide",b.dataset.tab!=="members");
+  $("#docs").classList.toggle("hide",b.dataset.tab!=="docs");
+});
+["#q","#filter","#cat"].forEach(s=>$(s).addEventListener("input",render));
+
+async function enter(){
+  PW = $("#pw").value;
+  $("#loginNote").textContent = "확인 중…";
+  try{
+    if(await load()){
+      $("#login").classList.add("hide"); $("#app").classList.remove("hide");
+      $("#mode").textContent = DEMO ? "데모 모드 · API_URL을 설정하면 구글 시트와 연결됩니다" : "구글 시트와 연결됨";
+      render();
+    } else $("#loginNote").textContent = "비밀번호가 맞지 않습니다.";
+  }catch{ $("#loginNote").textContent = "서버에 연결하지 못했습니다. API_URL을 확인하세요."; }
+}
+$("#go").onclick = enter;
+$("#pw").addEventListener("keydown",e=>{if(e.key==="Enter")enter()});
+if(DEMO) $("#loginNote").textContent = "데모 모드: 아무 비밀번호나 입력하세요.";
+</script>
+</body>
+</html>
