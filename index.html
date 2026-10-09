@@ -21,7 +21,7 @@ nav button[aria-selected=true]{color:var(--ink);border-color:var(--acc);font-wei
 .stat b{display:block;font-size:20px;color:var(--ink)}
 input,select{font:inherit;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
 .bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}.bar input{flex:1;min-width:160px}
-.row{display:grid;grid-template-columns:1.1fr 1.1fr 2.8fr;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.row{display:grid;grid-template-columns:24px 1fr 1fr 2.6fr;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:8px}
 .row.off{opacity:.5}
 .name{font-weight:700}.tel{color:var(--mute);font-size:14px}
 .chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
@@ -35,7 +35,18 @@ input,select{font:inherit;padding:9px 12px;border:1px solid var(--line);border-r
 .doc span{color:var(--mute);font-size:13px}
 .note{color:var(--mute);font-size:13px;margin:10px 0}
 .hide{display:none}
-@media(max-width:640px){.row{grid-template-columns:1fr}.chips{justify-content:flex-start}}
+@media(max-width:640px){.row{grid-template-columns:24px 1fr}.row .tel,.row .chips{grid-column:2}.chips{justify-content:flex-start}}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:10px}
+.tools .sp{flex:1}.chip.solid{background:var(--acc);color:#fff;border-color:var(--acc)}.chip.danger{color:#c0392b;border-color:#c0392b}
+.chip:disabled{opacity:.4;cursor:not-allowed}input[type=checkbox]{width:18px;height:18px;accent-color:var(--acc)}
+.gl{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.g{text-align:left;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;font:inherit;color:inherit;cursor:pointer}
+.g b{display:block;font-size:17px}.g span{color:var(--mute);font-size:13px}
+.ghead{display:flex;align-items:center;gap:10px;margin-bottom:12px}.ghead h2{margin:0;flex:1;font-size:22px}
+.gm{display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:8px}
+.st{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}.st.done{background:var(--okbg);color:var(--ok);border-color:var(--ok)}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(520px,92vw);max-height:80vh;padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.45)}.pick{display:flex;gap:10px;align-items:center;padding:8px 4px;border-bottom:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -51,6 +62,7 @@ input,select{font:inherit;padding:9px 12px;border:1px solid var(--line);border-r
 <main>
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-tab="members">명단</button>
+    <button role="tab" aria-selected="false" data-tab="groups">소모임</button>
     <button role="tab" aria-selected="false" data-tab="docs">문서</button>
   </nav>
 
@@ -62,8 +74,25 @@ input,select{font:inherit;padding:9px 12px;border:1px solid var(--line);border-r
         <option value="">전체</option><option value="wait">입금 대기</option><option value="inv">초대 대기</option><option value="off">비활성</option>
       </select>
     </div>
+    <div class="tools">
+      <label><input type="checkbox" id="all"> 전체 선택</label><b id="cnt">0명 선택</b><span class="sp"></span>
+      <select id="bf" aria-label="변경할 항목"><option value="active">활성</option><option value="guide">안내문구 전달</option><option value="paid">입금완료</option><option value="invited">초대완료</option></select>
+      <button class="chip solid" id="bon" disabled>켜기</button><button class="chip" id="boff" disabled>끄기</button>
+      <button class="chip danger" id="bdel" disabled>삭제</button>
+    </div>
     <div id="list"></div>
     <p class="note">안내문구 전달·초대완료는 카카오톡 봇이 자동으로 켭니다. 입금완료는 확인 후 직접 눌러주세요.</p>
+  </section>
+
+  <section id="groups" class="hide">
+    <div id="gview">
+      <div class="bar"><input id="gn" placeholder="새 소모임 이름"><button class="chip solid" id="gadd">소모임 만들기</button></div>
+      <div class="gl" id="gl"></div>
+    </div>
+    <div id="gdetail" class="hide">
+      <div class="ghead"><button class="chip" id="gback">← 소모임 목록</button><h2 id="gt"></h2><button class="chip solid" id="ginv">소모임 초대</button></div>
+      <div id="gml"></div>
+    </div>
   </section>
 
   <section id="docs" class="hide">
@@ -81,14 +110,19 @@ input,select{font:inherit;padding:9px 12px;border:1px solid var(--line);border-r
 </main>
 </div>
 
+<dialog id="dlg">
+  <h3 style="margin-top:0" id="dt"></h3>
+  <input id="dq" placeholder="이름 검색" style="width:100%;margin-bottom:8px">
+  <div id="dl" style="overflow:auto;max-height:46vh"></div>
+  <div class="bar" style="margin:12px 0 0;justify-content:flex-end"><button class="chip" id="dc">취소</button><button class="chip solid" id="dok" disabled>초대하기</button></div>
+</dialog>
 <script>
 // ★ Apps Script 웹 앱 URL을 넣으세요. 비워두면 연습용(데모) 데이터로 동작합니다.
-const API_URL = "https://script.google.com/macros/s/AKfycbzxcVzjTEYYZd8oXbuGz_iQt5C7iE7xgo34nPYNNYc-aDxbZ_pZi9ZUcmupx27A88w71Q/exec";
+const API_URL = "";
 
-let PW = "", members = [], docs = [];
+let PW = "", members = [], docs = [], groups = [], gm = [], sel = new Set(), cur = null;
 const $ = s => document.querySelector(s);
 const DEMO = !API_URL;
-
 const demoMembers = [
   {row:2,이름:"김하늘",연락처:"010-1111-2222",활성:true,안내전달:true,입금완료:true,초대완료:true},
   {row:3,이름:"이도윤",연락처:"010-3333-4444",활성:true,안내전달:true,입금완료:false,초대완료:false},
@@ -96,6 +130,8 @@ const demoMembers = [
   {row:5,이름:"최민준",연락처:"010-7777-8888",활성:false,안내전달:true,입금완료:true,초대완료:true}
 ];
 const demoDocs = [{분류:"회의록",제목:"10월 정기회의",링크:"#",날짜:"2026-10-02"},{분류:"포스터",제목:"신입 모집 포스터",링크:"#",날짜:"2026-09-20"}];
+const demoG = {groups:[{row:2,소모임명:"보드게임"},{row:3,소모임명:"러닝"}],members:[{row:2,소모임명:"보드게임",이름:"김하늘",연락처:"010-1111-2222",초대상태:"완료"}]};
+let nextRow = 100;
 
 async function api(params, body){
   if (DEMO) return null;
@@ -108,10 +144,12 @@ async function api(params, body){
 }
 
 async function load(){
-  if (DEMO){ members = structuredClone(demoMembers); docs = structuredClone(demoDocs); return true; }
+  if (DEMO){ members = structuredClone(demoMembers); docs = structuredClone(demoDocs); groups = structuredClone(demoG.groups); gm = structuredClone(demoG.members); return true; }
   const m = await api({action:"members"});
   if (m.error) return false;
   members = m; docs = await api({action:"docs"});
+  const g = await api({action:"groups"}); groups = g.groups; gm = g.members;
+  sel = new Set([...sel].filter(r => members.some(x => x.row === r)));
   return true;
 }
 
@@ -131,26 +169,91 @@ function render(){
   ].map(([a,b])=>`<div class="stat">${a}<b>${b}</b></div>`).join("");
   $("#list").innerHTML = list.length ? list.map(m=>`
     <div class="row ${m.활성?"":"off"}">
+      <input type="checkbox" class="ck" data-row="${m.row}" ${sel.has(m.row)?"checked":""} aria-label="${esc(m.이름)} 선택">
       <div class="name">${esc(m.이름)}</div><div class="tel">${esc(m.연락처)}</div>
       <div class="chips">
         ${chip(m,"active","활성",m.활성)}${chip(m,"guide","안내문구 전달",m.안내전달)}
         ${chip(m,"paid","입금완료",m.입금완료)}${chip(m,"invited","초대완료",m.초대완료)}
       </div></div>`).join("") : `<p class="note">조건에 맞는 인원이 없습니다.</p>`;
+  $("#cnt").textContent = sel.size + "명 선택";
+  ["bon","boff","bdel"].forEach(i=>$("#"+i).disabled = !sel.size);
+  $("#all").checked = list.length>0 && list.every(m=>sel.has(m.row));
+  $("#all").dataset.rows = JSON.stringify(list.map(m=>m.row));
   const c = $("#cat").value;
   $("#docList").innerHTML = docs.filter(d=>!c||d.분류===c).map(d=>`
     <a class="doc" href="${esc(d.링크)}" target="_blank" rel="noopener"><div><b>${esc(d.제목)}</b><br><span>${esc(d.분류)}</span></div><span>${esc(String(d.날짜).slice(0,10))}</span></a>`).join("") || `<p class="note">등록된 문서가 없습니다. 아래에서 드라이브 링크를 추가하세요.</p>`;
+  renderGroups();
+}
+function renderGroups(){
+  $("#gl").innerHTML = groups.length ? groups.map(g=>{const n=gm.filter(x=>x.소모임명===g.소모임명).length;
+    return `<button class="g" data-g="${esc(g.소모임명)}"><b>${esc(g.소모임명)}</b><span>${n}명</span></button>`}).join("") : `<p class="note">소모임이 없습니다. 위에서 만들어보세요.</p>`;
+  $("#gview").classList.toggle("hide",!!cur); $("#gdetail").classList.toggle("hide",!cur);
+  if(!cur) return;
+  $("#gt").textContent = cur;
+  const ms = gm.filter(x=>x.소모임명===cur);
+  $("#gml").innerHTML = ms.length ? ms.map(x=>`<div class="gm"><div class="name">${esc(x.이름)}</div><div class="tel">${esc(x.연락처)}</div>
+    <span class="st ${x.초대상태==="완료"?"done":""}">${x.초대상태==="완료"?"초대완료":"봇 초대 대기"}</span>
+    <button class="chip" data-rm="${x.row}">제외</button></div>`).join("") : `<p class="note">아직 소속 인원이 없습니다. 오른쪽 위 '소모임 초대'로 추가하세요.</p>`;
 }
 const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const KEY = {active:"활성",guide:"안내전달",paid:"입금완료",invited:"초대완료"};
 const chip = (m,f,label,on)=>`<button class="chip" aria-pressed="${!!on}" data-row="${m.row}" data-f="${f}">${label}</button>`;
 
+async function save(body, ok){ try{ await api(null, body); return true; }catch{ alert("저장에 실패했습니다. 다시 시도해주세요."); return false; } }
+async function reload(){ if(!DEMO) await load(); render(); }
+
 $("#list").addEventListener("click", async e=>{
   const b = e.target.closest(".chip"); if(!b) return;
   const m = members.find(x=>x.row==b.dataset.row), k = KEY[b.dataset.f];
-  m[k] = !m[k]; render();                                  // 즉시 반영
-  try{ await api(null,{action:"set",row:m.row,field:b.dataset.f,value:m[k]}); }
-  catch{ m[k] = !m[k]; render(); alert("저장에 실패했습니다. 다시 시도해주세요."); }
+  m[k] = !m[k]; render();
+  if(!await save({action:"set",row:m.row,field:b.dataset.f,value:m[k]})){ m[k]=!m[k]; render(); }
 });
+$("#list").addEventListener("change", e=>{
+  if(!e.target.classList.contains("ck")) return;
+  const r = Number(e.target.dataset.row); e.target.checked ? sel.add(r) : sel.delete(r); render();
+});
+$("#all").onchange = e=>{ JSON.parse(e.target.dataset.rows).forEach(r=> e.target.checked ? sel.add(r) : sel.delete(r)); render(); };
+async function bulk(v){
+  const f = $("#bf").value, rows=[...sel];
+  members.filter(m=>sel.has(m.row)).forEach(m=>m[KEY[f]]=v); render();
+  await save({action:"set_many",rows,field:f,value:v}); await reload();
+}
+$("#bon").onclick=()=>bulk(true); $("#boff").onclick=()=>bulk(false);
+$("#bdel").onclick = async ()=>{
+  if(!confirm(sel.size+"명을 명단에서 삭제할까요? 시트에서도 지워지며 되돌릴 수 없습니다.")) return;
+  const rows=[...sel]; members = members.filter(m=>!sel.has(m.row)); sel.clear(); render();
+  await save({action:"delete_members",rows}); await reload();
+};
+
+// ---- 소모임
+$("#gadd").onclick = async ()=>{
+  const n=$("#gn").value.trim(); if(!n||groups.some(g=>g.소모임명===n)) return alert("비어 있거나 이미 있는 이름입니다.");
+  groups.push({row:nextRow++,소모임명:n}); $("#gn").value=""; render();
+  await save({action:"add_group",name:n});
+};
+$("#gl").onclick = e=>{ const g=e.target.closest(".g"); if(g){cur=g.dataset.g; renderGroups();} };
+$("#gback").onclick = ()=>{cur=null; renderGroups();};
+$("#gml").onclick = async e=>{
+  const b=e.target.closest("[data-rm]"); if(!b||!confirm("이 소모임 명단에서 제외할까요? (카카오톡 방 강퇴는 하지 않습니다)")) return;
+  gm = gm.filter(x=>x.row!=b.dataset.rm); renderGroups();
+  await save({action:"remove_group_member",row:Number(b.dataset.rm)}); await reload();
+};
+let pick = new Set();
+function drawPick(){
+  const q=$("#dq").value.trim(), in_=new Set(gm.filter(x=>x.소모임명===cur).map(x=>String(x.연락처)));
+  const c = members.filter(m=>m.활성 && !in_.has(String(m.연락처)) && (!q||m.이름.includes(q)));
+  $("#dl").innerHTML = c.map(m=>`<label class="pick"><input type="checkbox" data-r="${m.row}" ${pick.has(m.row)?"checked":""}><b>${esc(m.이름)}</b><span class="tel">${esc(m.연락처)}</span></label>`).join("") || `<p class="note">초대할 수 있는 인원이 없습니다.</p>`;
+  $("#dok").disabled = !pick.size; $("#dok").textContent = pick.size ? pick.size+"명 초대하기" : "초대하기";
+}
+$("#ginv").onclick = ()=>{ pick.clear(); $("#dq").value=""; $("#dt").textContent = cur+" 초대할 인원 선택"; drawPick(); $("#dlg").showModal(); };
+$("#dl").onchange = e=>{ const r=Number(e.target.dataset.r); e.target.checked?pick.add(r):pick.delete(r); drawPick(); };
+$("#dq").oninput = drawPick; $("#dc").onclick = ()=>$("#dlg").close();
+$("#dok").onclick = async ()=>{
+  const ms = members.filter(m=>pick.has(m.row)).map(m=>({이름:m.이름,연락처:m.연락처}));
+  ms.forEach(m=>gm.push({row:nextRow++,소모임명:cur,...m,초대상태:"대기"}));
+  $("#dlg").close(); renderGroups();
+  await save({action:"invite_group",group:cur,members:ms}); await reload();
+};
 $("#addDoc").onclick = async ()=>{
   const d={분류:$("#nc").value,제목:$("#nt").value.trim(),링크:$("#nl").value.trim(),날짜:new Date().toISOString()};
   if(!d.제목||!d.링크) return alert("제목과 링크를 입력하세요.");
@@ -161,6 +264,7 @@ document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll("nav button").forEach(x=>x.setAttribute("aria-selected",x===b));
   $("#members").classList.toggle("hide",b.dataset.tab!=="members");
   $("#docs").classList.toggle("hide",b.dataset.tab!=="docs");
+  $("#groups").classList.toggle("hide",b.dataset.tab!=="groups");
 });
 ["#q","#filter","#cat"].forEach(s=>$(s).addEventListener("input",render));
 
