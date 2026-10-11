@@ -47,6 +47,12 @@ input,select{font:inherit;padding:9px 12px;border:1px solid var(--line);border-r
 .st{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);color:var(--mute)}.st.done{background:var(--okbg);color:var(--ok);border-color:var(--ok)}
 dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(520px,92vw);max-height:80vh;padding:18px}
 dialog::backdrop{background:rgba(0,0,0,.45)}.pick{display:flex;gap:10px;align-items:center;padding:8px 4px;border-bottom:1px solid var(--line)}
+.nm{background:none;border:0;padding:0;font:inherit;font-weight:700;color:var(--ink);cursor:pointer;text-align:left}
+.detail{grid-column:1/-1;border-top:1px dashed var(--line);padding-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px}
+.linkbtn{display:inline-block;text-decoration:none;margin:2px 0 10px}
+.chip[aria-pressed=false][data-st]{border-color:#e0b84a;color:#b7791f}
+.alert{background:#fff3cd;color:#7a5200;border:1px solid #e0b84a;border-radius:999px;padding:8px 16px;font:inherit;font-weight:700;cursor:pointer}
+@media(prefers-color-scheme:dark){.alert{background:#3b3115;color:#ffd666;border-color:#8a6d1d}}
 </style>
 </head>
 <body>
@@ -58,7 +64,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}.pick{display:flex;gap:10px;align-it
 </div>
 
 <div id="app" class="hide">
-<header><h1>동아리 아니마<small id="mode"></small></h1></header>
+<header style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap"><h1>동아리 아니마<small id="mode"></small></h1><button id="alert" class="alert hide" type="button"></button></header>
 <main>
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-tab="members">명단</button>
@@ -67,12 +73,11 @@ dialog::backdrop{background:rgba(0,0,0,.45)}.pick{display:flex;gap:10px;align-it
   </nav>
 
   <section id="members">
+    <a class="chip linkbtn" href="https://docs.google.com/spreadsheets/d/1Bo8Fe8pDfr2V80XxvCi5X3cuF8mOtg2dtbU0CznUxFs/edit?gid=1931705529#gid=1931705529" target="_blank" rel="noopener">구글 시트 명단 열기 ↗</a>
     <div class="stats" id="stats"></div>
-    <div class="bar">
+    <div class="bar" id="fbar">
       <input id="q" placeholder="이름·연락처 검색" aria-label="검색">
-      <select id="filter" aria-label="필터">
-        <option value="">전체</option><option value="wait">입금 대기</option><option value="inv">초대 대기</option><option value="off">비활성</option>
-      </select>
+      <button class="chip" id="freset">필터 초기화</button>
     </div>
     <div class="tools">
       <label><input type="checkbox" id="all"> 전체 선택</label><b id="cnt">0명 선택</b><span class="sp"></span>
@@ -90,7 +95,7 @@ dialog::backdrop{background:rgba(0,0,0,.45)}.pick{display:flex;gap:10px;align-it
       <div class="gl" id="gl"></div>
     </div>
     <div id="gdetail" class="hide">
-      <div class="ghead"><button class="chip" id="gback">← 소모임 목록</button><h2 id="gt"></h2><button class="chip solid" id="ginv">소모임 초대</button></div>
+      <div class="ghead"><button class="chip" id="gback">← 소모임 목록</button><h2 id="gt"></h2><button class="chip danger" id="gdel">소모임 삭제</button><button class="chip solid" id="ginv">소모임 초대</button></div>
       <div id="gml"></div>
     </div>
   </section>
@@ -131,7 +136,28 @@ const demoMembers = [
 ];
 const demoDocs = [{분류:"회의록",제목:"10월 정기회의",링크:"#",날짜:"2026-10-02"},{분류:"포스터",제목:"신입 모집 포스터",링크:"#",날짜:"2026-09-20"}];
 const demoG = {groups:[{row:2,소모임명:"보드게임"},{row:3,소모임명:"러닝"}],members:[{row:2,소모임명:"보드게임",이름:"김하늘",연락처:"010-1111-2222",초대상태:"완료"}]};
-let nextRow = 100;
+let nextRow = 100, stale = false;
+const EXPECT = 5;   // Code.gs의 VERSION과 같아야 최신
+const opened = new Set();
+const digits = v => String(v ?? "").replace(/\D/g,"");
+// 명부 시트에서 연락처 열을 이름 대신 내용으로도 찾음 (머리글이 '연락처'가 아니어도 동작)
+function phoneOf(m){
+  let p = m.연락처 || "";
+  if(!String(p).trim()) for(const k of Object.keys(m)) if(/연락|전화|휴대|번호|phone|tel/i.test(k) && String(m[k]).trim()){ p = m[k]; break; }
+  if(!String(p).trim()) for(const k of Object.keys(m)) if(/^0?1[016789][\s-]?\d{3,4}[\s-]?\d{4}$/.test(String(m[k]).trim())){ p = m[k]; break; }
+  let d = digits(p); if(d.length===10 && d[0]==="1") d = "0"+d;
+  return d.length===11 ? d.replace(/(\d{3})(\d{4})(\d{4})/,"$1-$2-$3") : String(p).trim();
+}
+// 같은 사람인가: 둘 다 연락처가 있으면 연락처로, 아니면 이름으로 비교
+const sp = (x,m) => { const a=digits(x.연락처), b=digits(m.연락처); return a && b ? a===b : String(x.이름).trim()===String(m.이름).trim(); };
+function detail(m){
+  const gs = gm.filter(x=>sp(x,m));
+  return `<div class="detail"><b>소속 소모임</b> ` + (gs.length ? gs.map(x=>`<span class="st ${x.초대상태==="완료"?"done":""}">${esc(x.소모임명)} · ${x.초대상태==="완료"?"초대완료":"초대 대기"}</span>`).join(" ") : `<span class="tel">소속된 소모임이 없습니다</span>`) + `</div>`;
+}
+// 시트 값이 true / "TRUE" / "O" 등 무엇이든 켜짐·꺼짐으로 통일
+const tb = v => v===true || ["TRUE","true","O","o","Y","y","1","예","✓"].includes(String(v).trim());
+const FILTERS = [["활성","활성"],["안내전달","안내문구"],["입금완료","입금"],["초대완료","초대"]];
+$("#fbar").insertAdjacentHTML("beforeend", FILTERS.map(([k,l])=>`<select class="fs" data-k="${k}" aria-label="${l} 필터"><option value="">${l}: 전체</option><option value="1">${l} 완료·켜짐</option><option value="0">${l} 안 됨·꺼짐</option></select>`).join("") + `<select id="fg" aria-label="소모임 필터"></select>`);
 
 async function api(params, body){
   if (DEMO) return null;
@@ -147,19 +173,27 @@ async function load(){
   if (DEMO){ members = structuredClone(demoMembers); docs = structuredClone(demoDocs); groups = structuredClone(demoG.groups); gm = structuredClone(demoG.members); return true; }
   const m = await api({action:"members"});
   if (m.error) return false;
-  members = m; docs = await api({action:"docs"});
-  const g = await api({action:"groups"}); groups = g.groups; gm = g.members;
+  try{ const v = await api({action:"version"}); stale = !(v && v.version >= EXPECT); }catch{ stale = true; }
+  if(stale) alert("Apps Script 서버 코드가 예전 버전입니다.\n새 Code.gs를 붙여넣고 [배포 관리 → 새 버전]으로 다시 배포해야 삭제·초대 전환 등이 동작합니다.");
+  members = m.map(x=>({...x, 연락처:phoneOf(x), 활성:tb(x.활성), 안내전달:tb(x.안내전달), 입금완료:tb(x.입금완료), 초대완료:tb(x.초대완료)}));
+  docs = await api({action:"docs"});
+  const g = await api({action:"groups"});
+  groups = (g.groups||[]).filter(x=>x.소모임명); gm = (g.members||[]).filter(x=>x.소모임명);
   sel = new Set([...sel].filter(r => members.some(x => x.row === r)));
   return true;
 }
 
 function render(){
-  const q = $("#q").value.trim(), f = $("#filter").value;
+  const q = $("#q").value.trim(), fg = $("#fg").value;
+  const fs = [...document.querySelectorAll(".fs")].filter(s=>s.value);
+  const inG = (m,g) => gm.some(x=>(!g||x.소모임명===g) && sp(x,m));
   const list = members.filter(m => {
     if (q && !(m.이름+m.연락처).includes(q)) return false;
-    if (f==="wait") return m.활성 && m.안내전달 && !m.입금완료;
-    if (f==="inv") return m.입금완료 && !m.초대완료;
-    if (f==="off") return !m.활성;
+    if (fs.some(s => (m[s.dataset.k] ? "1":"0") !== s.value)) return false;
+    if (fg === "__none") return !inG(m,"");
+    if (fg === "__any") return inG(m,"");
+    if (fg === "__wait") return gm.some(x=>x.초대상태!=="완료" && sp(x,m));
+    if (fg) return inG(m,fg);
     return true;
   });
   const act = members.filter(m=>m.활성);
@@ -170,12 +204,12 @@ function render(){
   $("#list").innerHTML = list.length ? list.map(m=>`
     <div class="row ${m.활성?"":"off"}">
       <input type="checkbox" class="ck" data-row="${m.row}" ${sel.has(m.row)?"checked":""} aria-label="${esc(m.이름)} 선택">
-      <div class="name">${esc(m.이름)}</div><div class="tel">${esc(m.연락처)}</div>
+      <button class="nm" data-o="${m.row}" aria-expanded="${opened.has(m.row)}">${opened.has(m.row)?"▾":"▸"} ${esc(m.이름)}</button><div class="tel">${esc(m.연락처)}</div>
       <div class="chips">
         ${chip(m,"active","활성",m.활성)}${chip(m,"guide","안내문구 전달",m.안내전달)}
         ${chip(m,"paid","입금완료",m.입금완료)}${chip(m,"invited","초대완료",m.초대완료)}
-      </div></div>`).join("") : `<p class="note">조건에 맞는 인원이 없습니다.</p>`;
-  $("#cnt").textContent = sel.size + "명 선택";
+      </div>${opened.has(m.row)?detail(m):""}</div>`).join("") : `<p class="note">조건에 맞는 인원이 없습니다.</p>`;
+  $("#cnt").textContent = sel.size + "명 선택 · " + list.length + "/" + members.length + "명 표시";
   ["bon","boff","bdel"].forEach(i=>$("#"+i).disabled = !sel.size);
   $("#all").checked = list.length>0 && list.every(m=>sel.has(m.row));
   $("#all").dataset.rows = JSON.stringify(list.map(m=>m.row));
@@ -185,24 +219,39 @@ function render(){
   renderGroups();
 }
 function renderGroups(){
+  const pend = gm.filter(x=>x.초대상태!=="완료").length;
+  $("#alert").classList.toggle("hide", !pend);
+  $("#alert").textContent = "소모임 대기인원이 있습니다 (" + pend + "명)";
+  const fgs=$("#fg"), fv=fgs.value;
+  fgs.innerHTML = `<option value="">소모임: 전체</option><option value="__any">소모임 소속 (전체)</option><option value="__none">소모임 미소속</option><option value="__wait">소모임 초대 대기 중</option>` + groups.map(g=>`<option value="${esc(g.소모임명)}">${esc(g.소모임명)} 소속</option>`).join("");
+  fgs.value = fv;
   $("#gl").innerHTML = groups.length ? groups.map(g=>{const n=gm.filter(x=>x.소모임명===g.소모임명).length;
-    return `<button class="g" data-g="${esc(g.소모임명)}"><b>${esc(g.소모임명)}</b><span>${n}명</span></button>`}).join("") : `<p class="note">소모임이 없습니다. 위에서 만들어보세요.</p>`;
+    return `<button class="g" data-g="${esc(g.소모임명)}"><b>${esc(g.소모임명)}</b><span>${n}명${gm.some(x=>x.소모임명===g.소모임명&&x.초대상태!=="완료")?` · <b style="color:#b7791f">초대 대기 ${gm.filter(x=>x.소모임명===g.소모임명&&x.초대상태!=="완료").length}</b>`:""}</span></button>`}).join("") : `<p class="note">소모임이 없습니다. 위에서 만들어보세요.</p>`;
   $("#gview").classList.toggle("hide",!!cur); $("#gdetail").classList.toggle("hide",!cur);
   if(!cur) return;
   $("#gt").textContent = cur;
   const ms = gm.filter(x=>x.소모임명===cur);
   $("#gml").innerHTML = ms.length ? ms.map(x=>`<div class="gm"><div class="name">${esc(x.이름)}</div><div class="tel">${esc(x.연락처)}</div>
-    <span class="st ${x.초대상태==="완료"?"done":""}">${x.초대상태==="완료"?"초대완료":"봇 초대 대기"}</span>
+    <button class="chip" aria-pressed="${x.초대상태==="완료"}" data-st="${x.row}">${x.초대상태==="완료"?"초대완료":"초대 대기"}</button>
     <button class="chip" data-rm="${x.row}">제외</button></div>`).join("") : `<p class="note">아직 소속 인원이 없습니다. 오른쪽 위 '소모임 초대'로 추가하세요.</p>`;
 }
 const esc = s => String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const KEY = {active:"활성",guide:"안내전달",paid:"입금완료",invited:"초대완료"};
 const chip = (m,f,label,on)=>`<button class="chip" aria-pressed="${!!on}" data-row="${m.row}" data-f="${f}">${label}</button>`;
 
-async function save(body, ok){ try{ await api(null, body); return true; }catch{ alert("저장에 실패했습니다. 다시 시도해주세요."); return false; } }
+let queue = Promise.resolve();   // 저장 요청을 한 줄로 세워 순서가 뒤섞이지 않게 함
+function save(body){
+  const p = queue.then(async()=>{
+    try{ const r = await api(null, body); if(r && r.error) throw new Error(r.error); return true; }
+    catch(e){ console.error(e); alert("저장에 실패했습니다: " + (e.message==="unknown action" ? "서버(Apps Script)가 예전 버전입니다. 새 Code.gs로 새 버전 배포가 필요합니다." : (e.message||""))); return false; }
+  });
+  queue = p; return p;
+}
 async function reload(){ if(!DEMO) await load(); render(); }
 
 $("#list").addEventListener("click", async e=>{
+  const o = e.target.closest(".nm");
+  if(o){ const r=Number(o.dataset.o); opened.has(r)?opened.delete(r):opened.add(r); render(); return; }
   const b = e.target.closest(".chip"); if(!b) return;
   const m = members.find(x=>x.row==b.dataset.row), k = KEY[b.dataset.f];
   m[k] = !m[k]; render();
@@ -216,7 +265,7 @@ $("#all").onchange = e=>{ JSON.parse(e.target.dataset.rows).forEach(r=> e.target
 async function bulk(v){
   const f = $("#bf").value, rows=[...sel];
   members.filter(m=>sel.has(m.row)).forEach(m=>m[KEY[f]]=v); render();
-  await save({action:"set_many",rows,field:f,value:v}); await reload();
+  if(!await save({action:"set_many",rows,field:f,value:v})) await reload();
 }
 $("#bon").onclick=()=>bulk(true); $("#boff").onclick=()=>bulk(false);
 $("#bdel").onclick = async ()=>{
@@ -229,19 +278,33 @@ $("#bdel").onclick = async ()=>{
 $("#gadd").onclick = async ()=>{
   const n=$("#gn").value.trim(); if(!n||groups.some(g=>g.소모임명===n)) return alert("비어 있거나 이미 있는 이름입니다.");
   groups.push({row:nextRow++,소모임명:n}); $("#gn").value=""; render();
-  await save({action:"add_group",name:n});
+  await save({action:"add_group",name:n}); await reload();
 };
 $("#gl").onclick = e=>{ const g=e.target.closest(".g"); if(g){cur=g.dataset.g; renderGroups();} };
 $("#gback").onclick = ()=>{cur=null; renderGroups();};
 $("#gml").onclick = async e=>{
-  const b=e.target.closest("[data-rm]"); if(!b||!confirm("이 소모임 명단에서 제외할까요? (카카오톡 방 강퇴는 하지 않습니다)")) return;
-  gm = gm.filter(x=>x.row!=b.dataset.rm); renderGroups();
-  await save({action:"remove_group_member",row:Number(b.dataset.rm)}); await reload();
+  const t=e.target.closest("[data-st]");
+  if(t){                                   // 초대 대기 <-> 초대완료 수동 전환
+    const x=gm.find(y=>y.row==t.dataset.st); if(!x) return;
+    x.초대상태 = x.초대상태==="완료" ? "대기" : "완료"; render();
+    if(!await save({action:"set_group_status",row:x.row,group:x.소모임명,name:x.이름,phone:x.연락처,status:x.초대상태})) await reload();
+    return;
+  }
+  const b=e.target.closest("[data-rm]"); if(!b) return;
+  const x=gm.find(y=>y.row==b.dataset.rm);
+  if(!x || !confirm(x.이름+"님을 이 소모임 명단에서 제외할까요? (카카오톡 방 강퇴는 하지 않습니다)")) return;
+  gm=gm.filter(y=>y!==x); render();
+  await save({action:"remove_group_member",row:x.row,group:x.소모임명,name:x.이름,phone:x.연락처}); await reload();
+};
+$("#gdel").onclick = async ()=>{
+  if(!confirm("'"+cur+"' 소모임을 삭제할까요?\n소속 인원 기록도 함께 삭제되며, 카카오톡 방은 그대로 남습니다.")) return;
+  const n=cur; groups=groups.filter(g=>g.소모임명!==n); gm=gm.filter(x=>x.소모임명!==n); cur=null; render();
+  await save({action:"delete_group",name:n}); await reload();
 };
 let pick = new Set();
 function drawPick(){
-  const q=$("#dq").value.trim(), in_=new Set(gm.filter(x=>x.소모임명===cur).map(x=>String(x.연락처)));
-  const c = members.filter(m=>m.활성 && !in_.has(String(m.연락처)) && (!q||m.이름.includes(q)));
+  const q=$("#dq").value.trim();
+  const c = members.filter(m=>m.활성 && !gm.some(x=>x.소모임명===cur && sp(x,m)) && (!q||m.이름.includes(q)));
   $("#dl").innerHTML = c.map(m=>`<label class="pick"><input type="checkbox" data-r="${m.row}" ${pick.has(m.row)?"checked":""}><b>${esc(m.이름)}</b><span class="tel">${esc(m.연락처)}</span></label>`).join("") || `<p class="note">초대할 수 있는 인원이 없습니다.</p>`;
   $("#dok").disabled = !pick.size; $("#dok").textContent = pick.size ? pick.size+"명 초대하기" : "초대하기";
 }
@@ -260,13 +323,15 @@ $("#addDoc").onclick = async ()=>{
   docs.unshift(d); render(); $("#nt").value=$("#nl").value="";
   await api(null,{action:"add_doc",category:d.분류,title:d.제목,link:d.링크});
 };
-document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{
-  document.querySelectorAll("nav button").forEach(x=>x.setAttribute("aria-selected",x===b));
-  $("#members").classList.toggle("hide",b.dataset.tab!=="members");
-  $("#docs").classList.toggle("hide",b.dataset.tab!=="docs");
-  $("#groups").classList.toggle("hide",b.dataset.tab!=="groups");
-});
-["#q","#filter","#cat"].forEach(s=>$(s).addEventListener("input",render));
+function showTab(t){
+  document.querySelectorAll("nav button").forEach(x=>x.setAttribute("aria-selected",x.dataset.tab===t));
+  ["members","groups","docs"].forEach(id=>$("#"+id).classList.toggle("hide",id!==t));
+}
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
+$("#alert").onclick=()=>{ cur=null; showTab("groups"); renderGroups(); };
+["#q","#cat"].forEach(s=>$(s).addEventListener("input",render));
+$("#fbar").addEventListener("change",render);
+$("#freset").onclick=()=>{ $("#q").value=""; document.querySelectorAll("#fbar select").forEach(s=>s.value=""); render(); };
 
 async function enter(){
   PW = $("#pw").value;
@@ -274,7 +339,7 @@ async function enter(){
   try{
     if(await load()){
       $("#login").classList.add("hide"); $("#app").classList.remove("hide");
-      $("#mode").textContent = DEMO ? "데모 모드 · API_URL을 설정하면 구글 시트와 연결됩니다" : "구글 시트와 연결됨";
+      $("#mode").textContent = DEMO ? "데모 모드 · API_URL을 설정하면 구글 시트와 연결됩니다" : (stale ? "⚠ Apps Script가 예전 버전입니다 — 새 버전으로 재배포하세요" : "구글 시트와 연결됨");
       render();
     } else $("#loginNote").textContent = "비밀번호가 맞지 않습니다.";
   }catch{ $("#loginNote").textContent = "서버에 연결하지 못했습니다. API_URL을 확인하세요."; }
