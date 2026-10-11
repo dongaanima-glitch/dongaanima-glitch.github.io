@@ -137,7 +137,7 @@ const demoMembers = [
 const demoDocs = [{분류:"회의록",제목:"10월 정기회의",링크:"#",날짜:"2026-10-02"},{분류:"포스터",제목:"신입 모집 포스터",링크:"#",날짜:"2026-09-20"}];
 const demoG = {groups:[{row:2,소모임명:"보드게임"},{row:3,소모임명:"러닝"}],members:[{row:2,소모임명:"보드게임",이름:"김하늘",연락처:"010-1111-2222",초대상태:"완료"}]};
 let nextRow = 100, stale = false;
-const EXPECT = 5;   // Code.gs의 VERSION과 같아야 최신
+const EXPECT = 6;   // Code.gs의 VERSION과 같아야 최신
 const opened = new Set();
 const digits = v => String(v ?? "").replace(/\D/g,"");
 // 명부 시트에서 연락처 열을 이름 대신 내용으로도 찾음 (머리글이 '연락처'가 아니어도 동작)
@@ -171,14 +171,18 @@ async function api(params, body){
 
 async function load(){
   if (DEMO){ members = structuredClone(demoMembers); docs = structuredClone(demoDocs); groups = structuredClone(demoG.groups); gm = structuredClone(demoG.members); return true; }
-  const m = await api({action:"members"});
-  if (m.error) return false;
-  try{ const v = await api({action:"version"}); stale = !(v && v.version >= EXPECT); }catch{ stale = true; }
-  if(stale) alert("Apps Script 서버 코드가 예전 버전입니다.\n새 Code.gs를 붙여넣고 [배포 관리 → 새 버전]으로 다시 배포해야 삭제·초대 전환 등이 동작합니다.");
-  members = m.map(x=>({...x, 연락처:phoneOf(x), 활성:tb(x.활성), 안내전달:tb(x.안내전달), 입금완료:tb(x.입금완료), 초대완료:tb(x.초대완료)}));
-  docs = await api({action:"docs"});
-  const g = await api({action:"groups"});
-  groups = (g.groups||[]).filter(x=>x.소모임명); gm = (g.members||[]).filter(x=>x.소모임명);
+  let all = await api({action:"all"});                       // 한 번에 전부 받기
+  if (all.error === "unauthorized") return false;
+  if (all.error){                                            // 예전 서버: 하나씩 받기
+    const m = await api({action:"members"}); if (m.error) return false;
+    const g = await api({action:"groups"});
+    all = {members:m, docs:await api({action:"docs"}), groups:g.groups, gmembers:g.members};
+    stale = true;
+  } else stale = !(all.version >= EXPECT);
+  if(stale) alert("Apps Script 서버 코드가 예전 버전입니다.\n새 Code.gs를 붙여넣고 [배포 관리 → 새 버전]으로 다시 배포해 주세요.");
+  members = all.members.map(x=>({...x, 연락처:phoneOf(x), 활성:tb(x.활성), 안내전달:tb(x.안내전달), 입금완료:tb(x.입금완료), 초대완료:tb(x.초대완료)}));
+  docs = all.docs;
+  groups = (all.groups||[]).filter(x=>x.소모임명); gm = (all.gmembers||[]).filter(x=>x.소모임명);
   sel = new Set([...sel].filter(r => members.some(x => x.row === r)));
   return true;
 }
